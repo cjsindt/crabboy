@@ -172,7 +172,8 @@ impl DMGCPU {
         };
     }
 
-    fn execute(&mut self, instr: u8) -> Option<u16> {
+        // TODO make execute return duration instead of new pc
+    fn execute(&mut self, instr: u8) -> u8 {
         match instr {
             0x00 => {   //  NOP
                 Some(self.pc + 1)
@@ -180,7 +181,7 @@ impl DMGCPU {
             0x01 => {   //  LD, BC, n16
                 let v = self.memory.read_word(self.pc + 1);
                 self.registers.write_bc(v);
-                Some(self.pc + 3)
+                self.pc += 3
             },
             0x02 => {   //  LD, [BC], A
                 self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
@@ -398,5 +399,15 @@ mod tests {
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.registers.hl(), 0x0002);
         assert_eq!(test_cpu.cpu.registers.f.carry, true);
+    }
+
+    #[test]
+    fn test_0x0A() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x0A]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        
     }
 }
