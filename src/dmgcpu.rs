@@ -171,13 +171,19 @@ impl DMGCPU {
 
     fn execute(&mut self, instr: u8) -> Option<u16> {
         match instr {
-            0x00 => {Some(self.pc + 1)},
-            0x01 => {
+            0x00 => {   // NOP
+                Some(self.pc + 1)
+            },    
+            0x01 => {   // LD, BC, n16
                 let v = self.memory.read_word(self.pc + 1);
                 self.registers.write_bc(v);
-                Some(self.pc + 2)
+                Some(self.pc + 3)
             },
-            2_u8..=u8::MAX => todo!()
+            0x02 => {   // LD, [BC], A
+                self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
+                Some(self.pc + 1)
+            },
+            3_u8..=u8::MAX => todo!()
         }
     }
 }
@@ -225,7 +231,17 @@ mod tests {
         test_cpu.cpu.memory.write(0x0100, &[0x01, 0xEF, 0xBE]);
         test_cpu.cycle();
 
-        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 3);
         assert_eq!(test_cpu.cpu.registers.bc(), 0xBEEF);
+    }
+
+    #[test]
+    fn test_ldbca() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x02]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.memory.read_byte(test_cpu.cpu.registers.bc()), test_cpu.cpu.registers.a);
     }
 }
