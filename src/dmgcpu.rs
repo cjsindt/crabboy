@@ -13,6 +13,7 @@ const CARRY_FLAG_BYTE_POSITION: u8 = 4;
 pub struct DMGCPU {
     registers: Registers,
     pc: u16,
+    sp: u16,
     memory: Memory,
     halt: bool,
     #[cfg(feature = "debug")]
@@ -134,6 +135,7 @@ impl DMGCPU {
         DMGCPU {
             registers,
             pc: 0x0100,
+            sp: 0x0000,
             memory,
             halt: false,
             #[cfg(feature = "debug")]
