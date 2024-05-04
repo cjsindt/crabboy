@@ -147,6 +147,14 @@ impl DMGCPU {
         
     // }
 
+    pub fn run(&mut self) {
+        while !self.halt {
+            self.cycle();
+        }
+        #[cfg(feature = "debug")]
+        self.cycle_debug();
+    }
+
     /* ----- PRIVATE ----- */
     fn cycle(&mut self) {
         let instr = self.memory.read_byte(self.pc);
@@ -158,7 +166,7 @@ impl DMGCPU {
                 panic!("Unknown instruction!");
                 0
             }
-        }
+        };
     }
 
     fn execute(&mut self, instr: u8) -> Option<u16> {
@@ -178,7 +186,23 @@ impl DMGCPU {
             0x03 => {   // INC BC
                 self.registers.write_bc(self.registers.bc().wrapping_add(1));
                 Some(self.pc + 2)
-            }
+            },
+            0x04 => {   //  INC B
+                let r = self.registers.b.wrapping_add(1);
+                self.registers.b = r;
+                self.registers.f.zero = r == 0;
+                self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
+                self.registers.f.subtract = false;
+                Some(self.pc + 2)
+            },
+            0x05 => {   // DEC B
+                let r = self.registers.b.wrapping_sub(1);
+                self.registers.b = r;
+                self.registers.f.zero = r == 0;
+                self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
+                self.registers.f.subtract = false;
+                Some(self.pc + 2)
+            },
             0x76 => {   // HALT
                 self.halt = true;
                 Some(self.pc + 1)
@@ -211,6 +235,7 @@ impl DMGCPU {
         handle.flush().expect("Failed to flush stdout");
         self.cycle_count += 1;
     }
+    
 }
 
 #[cfg(test)]
@@ -280,13 +305,23 @@ mod tests {
         assert_eq!(test_cpu.cpu.registers.bc(), test_cpu.initial_registers.bc().wrapping_add(1));
     }
 
-    // #[test]
-    // fn test_0x04() {
-    //     let mut test_cpu = TestDMGCPU::new();
-    //     test_cpu.cpu.memory.write(0x0100, &[0x04]);
-    //     test_cpu.cycle();
+    #[test]
+    fn test_0x04() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x04]);
+        test_cpu.cycle();
 
-    //     assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
-    //     assert_eq!(test_cpu.cpu.registers.bc(), test_cpu.initial_registers.bc().wrapping_add(1));
-    // }
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.b, test_cpu.initial_registers.b.wrapping_add(1));
+    }
+
+    #[test]
+    fn test_0x05() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x05]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.b, test_cpu.initial_registers.b.wrapping_sub(1));
+    }
 }
