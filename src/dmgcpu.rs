@@ -203,7 +203,7 @@ impl DMGCPU {
                 self.registers.b = r;
                 self.registers.f.zero = r == 0;
                 self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
-                self.registers.f.subtract = false;
+                self.registers.f.subtract = true;
                 Some(self.pc + 2)
             },
             0x06 => {   //  LD, B, d8
@@ -216,13 +216,20 @@ impl DMGCPU {
                 self.registers.a = r;
                 self.registers.f.half_carry = false;
                 self.registers.f.subtract = false;
-                self.registers.f.zero = r == 0;
+                self.registers.f.zero = false;
                 self.registers.f.carry = c;
                 Some(self.pc + 2)
             },
             0x08 => {   //  LD (a16), SP
                 self.memory.write(self.memory.read_word(self.pc + 1) as usize, &self.sp.to_le_bytes());
                 Some(self.pc + 3)
+            },
+            0x09 => {   //  ADD HL, BC
+                self.registers.f.subtract = false;
+                self.registers.f.half_carry = (self.registers.hl() & 0x07FF) + (self.registers.bc() & 0x07FF) > 0x07FF;
+                self.registers.f.carry = self.registers.hl() > (0xFFFF - self.registers.bc());
+                self.registers.write_hl(self.registers.hl().wrapping_add(self.registers.bc()));
+                Some(self.pc + 2)
             },
             0x76 => {   // HALT
                 self.halt = true;
@@ -378,5 +385,18 @@ mod tests {
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 3);
         assert_eq!(test_cpu.cpu.memory.read_word(test_cpu.cpu.memory.read_word(test_cpu.initial_pc + 1)), 0xFFFF);
+    }
+
+    #[test]
+    fn test_0x09() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.registers.write_hl(0xFFFE);
+        test_cpu.cpu.registers.write_bc(0x0004);
+        test_cpu.cpu.memory.write(0x0100, &[0x09]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.hl(), 0x0002);
+        assert_eq!(test_cpu.cpu.registers.f.carry, true);
     }
 }
