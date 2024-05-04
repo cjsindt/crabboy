@@ -55,7 +55,7 @@ impl Registers {
     }
 
     fn write_af(&mut self, value: u16) {
-        self.a = ((value * 0xFF00) >> 8) as u8;
+        self.a = (value >> 8) as u8;
         self.f = FlagRegister::from((value & 0xF0) as u8);
     }
 
@@ -64,7 +64,7 @@ impl Registers {
     }
 
     fn write_bc(&mut self, value: u16) {
-        self.b = ((value * 0xFF00) >> 8) as u8;
+        self.b = (value >> 8) as u8;
         self.c = (value & 0xFF) as u8;
     }
 
@@ -73,7 +73,7 @@ impl Registers {
     }
 
     fn write_de(&mut self, value: u16) {
-        self.d = ((value * 0xFF00) >> 8) as u8;
+        self.d = (value >> 8) as u8;
         self.e = (value & 0xFF) as u8;
     }
 
@@ -82,7 +82,7 @@ impl Registers {
     }
 
     fn write_hl(&mut self, value: u16) {
-        self.h = ((value * 0xFF00) >> 8) as u8;
+        self.h = (value >> 8) as u8;
         self.l = (value & 0xFF) as u8;
     }
 }
@@ -119,8 +119,15 @@ impl Memory {
         }
     }
 
-    fn read(&self, address: u16) -> u8 {
+    fn read_byte(&self, address: u16) -> u8 {
         self.memory[address as usize]
+    }
+
+    fn read_word(&self, address: u16) -> u16 {
+        u16::from_le_bytes([
+            self.memory[address as usize],
+            self.memory[(address + 1) as usize]
+        ])
     }
 
     fn write(&mut self, address: usize, data: &[u8]) {
@@ -152,7 +159,7 @@ impl DMGCPU {
 
     /* ----- PRIVATE ----- */
     fn cycle(&mut self) {
-        let mut instr = self.memory.read(self.pc);
+        let mut instr = self.memory.read_byte(self.pc);
         self.pc = match self.execute(instr) {
             Some(value) => value,
             None => {
@@ -164,8 +171,13 @@ impl DMGCPU {
 
     fn execute(&mut self, instr: u8) -> Option<u16> {
         match instr {
-            0x00 => {Some(self.pc + 1)}
-            1_u8..=u8::MAX => todo!()
+            0x00 => {Some(self.pc + 1)},
+            0x01 => {
+                let v = self.memory.read_word(self.pc + 1);
+                self.registers.write_bc(v);
+                Some(self.pc + 2)
+            },
+            2_u8..=u8::MAX => todo!()
         }
     }
 }
@@ -205,5 +217,15 @@ mod tests {
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
         assert_eq!(test_cpu.cpu.registers, test_cpu.initial_registers);
+    }
+
+    #[test]
+    fn test_ldbc() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x01, 0xEF, 0xBE]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.bc(), 0xBEEF);
     }
 }
