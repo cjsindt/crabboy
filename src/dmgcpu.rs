@@ -154,8 +154,8 @@ impl DMGCPU {
                 self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
                 Some(self.pc + 2)
             },
-            0x03 => {
-                self.registers.bc();
+            0x03 => {   // INC BC
+                self.registers.write_bc(self.registers.bc().wrapping_add(1));
                 Some(self.pc + 2)
             }
             3_u8..=u8::MAX => todo!()
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nop() {
+    fn test_0x00() {
         let mut test_cpu = TestDMGCPU::new();
         test_cpu.cpu.memory.write(0x0100, &[0x00]);
         test_cpu.cycle();
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ldbc() {
+    fn test_0x01() {
         let mut test_cpu = TestDMGCPU::new();
         test_cpu.cpu.memory.write(0x0100, &[0x01, 0xEF, 0xBE]);
         test_cpu.cycle();
@@ -211,12 +211,22 @@ mod tests {
     }
 
     #[test]
-    fn test_ldbca() {
+    fn test_0x02() {
         let mut test_cpu = TestDMGCPU::new();
         test_cpu.cpu.memory.write(0x0100, &[0x02]);
         test_cpu.cycle();
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.memory.read_byte(test_cpu.cpu.registers.bc()), test_cpu.cpu.registers.a);
+    }
+
+    #[test]
+    fn test_0x03() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x03]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.bc(), test_cpu.initial_registers.bc().wrapping_add(1));
     }
 }
