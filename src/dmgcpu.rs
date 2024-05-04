@@ -1,3 +1,5 @@
+use std::fmt;
+use std::io::{self, Write};
 use crate::memory::Memory;
 
 /* ----- CONSTANT DECLARATIONS ----- */
@@ -11,6 +13,9 @@ pub struct DMGCPU {
     registers: Registers,
     pc: u16,
     memory: Memory,
+    halt: bool,
+    #[cfg(feature = "debug")]
+    cycle_count: u16,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -25,7 +30,7 @@ struct Registers {
     l: u8,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 struct FlagRegister {
     zero: bool,
     subtract: bool,
@@ -110,15 +115,28 @@ impl std::convert::From<u8> for FlagRegister {
     }
 }
 
+impl fmt::Debug for FlagRegister {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "zero: {}, subtract: {}, half_carry: {}, carry: {}", 
+            self.zero as u8, self.subtract as u8, self.half_carry as u8, self.carry as u8)
+    }
+}
+
 impl DMGCPU {
     /* ----- PUBLIC ----- */
     pub fn new() -> DMGCPU {
         let registers = Registers::new();
         let memory = Memory::new();
+        #[cfg(feature = "debug")]
+        let cycle_count = 0;
+
         DMGCPU {
             registers,
             pc: 0x0100,
             memory,
+            halt: false,
+            #[cfg(feature = "debug")]
+            cycle_count,
         }
     }
 
@@ -131,6 +149,8 @@ impl DMGCPU {
     /* ----- PRIVATE ----- */
     fn cycle(&mut self) {
         let mut instr = self.memory.read_byte(self.pc);
+        #[cfg(feature = "debug")]
+        self.cycle_debug();
         self.pc = match self.execute(instr) {
             Some(value) => value,
             None => {
@@ -158,8 +178,37 @@ impl DMGCPU {
                 self.registers.write_bc(self.registers.bc().wrapping_add(1));
                 Some(self.pc + 2)
             }
+            0x76 => {   // HALT
+                self.halt = true;
+                Some(self.pc + 1)
+            }
             3_u8..=u8::MAX => todo!()
         }
+    }
+
+    #[cfg(feature = "debug")]
+    fn cycle_debug(&mut self) {
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+    
+        writeln!(handle, "------ CYCLE {} ------", self.cycle_count).expect("Failed to write to stdout");
+        writeln!(handle, "PC: {:04X}", self.pc).expect("Failed to write to stdout");
+        writeln!(handle, "Registers:").expect("Failed to write to stdout");
+        writeln!(handle, "  A: {:02X}", self.registers.a).expect("Failed to write to stdout");
+        writeln!(handle, "  B: {:02X}", self.registers.b).expect("Failed to write to stdout");
+        writeln!(handle, "  C: {:02X}", self.registers.c).expect("Failed to write to stdout");
+        writeln!(handle, "  D: {:02X}", self.registers.d).expect("Failed to write to stdout");
+        writeln!(handle, "  E: {:02X}", self.registers.e).expect("Failed to write to stdout");
+        writeln!(handle, "  F: {:?}", self.registers.f).expect("Failed to write to stdout");
+        writeln!(handle, "  H: {:02X}", self.registers.h).expect("Failed to write to stdout");
+        writeln!(handle, "  L: {:02X}", self.registers.l).expect("Failed to write to stdout");
+        let instr = self.memory.read_byte(self.pc);
+        let next_word = self.memory.read_word(self.pc + 1);
+        writeln!(handle, "Instruction: {:02X}", instr).expect("Failed to write to stdout");
+        writeln!(handle, "Next Word: {:04X}", next_word).expect("Failed to write to stdout");
+    
+        handle.flush().expect("Failed to flush stdout");
+        self.cycle_count += 1;
     }
 }
 
@@ -175,7 +224,7 @@ mod tests {
     
     impl TestDMGCPU {
         fn new() -> Self {
-            let cpu = DMGCPU::new();
+            let mut cpu = DMGCPU::new();
             let initial_pc = cpu.pc;
             let initial_registers = cpu.registers.clone();
             TestDMGCPU {
@@ -229,4 +278,14 @@ mod tests {
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.registers.bc(), test_cpu.initial_registers.bc().wrapping_add(1));
     }
+
+    // #[test]
+    // fn test_0x04() {
+    //     let mut test_cpu = TestDMGCPU::new();
+    //     test_cpu.cpu.memory.write(0x0100, &[0x04]);
+    //     test_cpu.cycle();
+
+    //     assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+    //     assert_eq!(test_cpu.cpu.registers.bc(), test_cpu.initial_registers.bc().wrapping_add(1));
+    // }
 }
