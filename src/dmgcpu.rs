@@ -148,6 +148,7 @@ impl DMGCPU {
     // }
 
     pub fn run(&mut self) {
+        
         while !self.halt {
             self.cycle();
         }
@@ -201,6 +202,10 @@ impl DMGCPU {
                 self.registers.f.zero = r == 0;
                 self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
                 self.registers.f.subtract = false;
+                Some(self.pc + 2)
+            },
+            0x06 => {   //  LD, B, d8
+                self.registers.b = self.memory.read_byte(self.pc + 1);
                 Some(self.pc + 2)
             },
             0x76 => {   // HALT
@@ -323,5 +328,15 @@ mod tests {
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.registers.b, test_cpu.initial_registers.b.wrapping_sub(1));
+    }
+
+    #[test]
+    fn test_0x06() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x06, 0x77]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.b, test_cpu.cpu.memory.read_byte(test_cpu.initial_pc + 1));
     }
 }
