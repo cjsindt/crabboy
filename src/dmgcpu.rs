@@ -208,6 +208,16 @@ impl DMGCPU {
                 self.registers.b = self.memory.read_byte(self.pc + 1);
                 Some(self.pc + 2)
             },
+            0x07 => {   //  RLCA
+                let c = self.registers.a & 0x80 == 0x80;
+                let r = (self.registers.a << 1) | (if self.registers.f.carry {1} else {0});
+                self.registers.a = r;
+                self.registers.f.half_carry = false;
+                self.registers.f.subtract = false;
+                self.registers.f.zero = r == 0;
+                self.registers.f.carry = c;
+                Some(self.pc + 2)
+            },
             0x76 => {   // HALT
                 self.halt = true;
                 Some(self.pc + 1)
@@ -243,6 +253,7 @@ impl DMGCPU {
     
 }
 
+/* ----- TESTS ----- */
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,5 +349,17 @@ mod tests {
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.registers.b, test_cpu.cpu.memory.read_byte(test_cpu.initial_pc + 1));
+    }
+
+    #[test]
+    fn test_0x07() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.registers.a = 0b10101010;
+        test_cpu.cpu.memory.write(0x0100, &[0x07]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.a, 0b01010100);
+        assert_eq!(test_cpu.cpu.registers.f.carry, true);
     }
 }
