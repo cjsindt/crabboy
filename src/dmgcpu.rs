@@ -1,3 +1,5 @@
+use crate::memory::Memory;
+
 /* ----- CONSTANT DECLARATIONS ----- */
 const ZERO_FLAG_BYTE_POSITION: u8 = 7;
 const SUBTRACT_FLAG_BYTE_POSITION: u8 = 6;
@@ -29,10 +31,6 @@ struct FlagRegister {
     subtract: bool,
     half_carry: bool,
     carry: bool,
-}
-
-struct Memory {
-    memory: [u8; 0xFFFF]
 }
 
 /* ----- IMPL DEFINITIONS ----- */
@@ -112,33 +110,6 @@ impl std::convert::From<u8> for FlagRegister {
     }
 }
 
-impl Memory {
-    fn new() -> Memory {
-        Memory {
-            memory: [0; 0xFFFF]
-        }
-    }
-
-    fn read_byte(&self, address: u16) -> u8 {
-        self.memory[address as usize]
-    }
-
-    fn read_word(&self, address: u16) -> u16 {
-        u16::from_le_bytes([
-            self.memory[address as usize],
-            self.memory[(address + 1) as usize]
-        ])
-    }
-
-    fn write(&mut self, address: usize, data: &[u8]) {
-        // Ensure the address is within bounds
-        assert!(address + data.len() <= self.memory.len(), "Address out of bounds");
-
-        // Write data starting at the specified address
-        self.memory[address..(address + data.len())].copy_from_slice(data);
-    }
-}
-
 impl DMGCPU {
     /* ----- PUBLIC ----- */
     pub fn new() -> DMGCPU {
@@ -181,8 +152,12 @@ impl DMGCPU {
             },
             0x02 => {   // LD, [BC], A
                 self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
-                Some(self.pc + 1)
+                Some(self.pc + 2)
             },
+            0x03 => {
+                self.registers.bc();
+                Some(self.pc + 2)
+            }
             3_u8..=u8::MAX => todo!()
         }
     }
@@ -241,7 +216,7 @@ mod tests {
         test_cpu.cpu.memory.write(0x0100, &[0x02]);
         test_cpu.cycle();
 
-        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.memory.read_byte(test_cpu.cpu.registers.bc()), test_cpu.cpu.registers.a);
     }
 }
