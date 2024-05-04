@@ -1,5 +1,6 @@
 use std::fmt;
-use std::io::{self, Write};
+#[cfg(feature = "debug")]
+use std::io::{Write};
 use crate::memory::Memory;
 
 /* ----- CONSTANT DECLARATIONS ----- */
@@ -148,7 +149,7 @@ impl DMGCPU {
 
     /* ----- PRIVATE ----- */
     fn cycle(&mut self) {
-        let mut instr = self.memory.read_byte(self.pc);
+        let instr = self.memory.read_byte(self.pc);
         #[cfg(feature = "debug")]
         self.cycle_debug();
         self.pc = match self.execute(instr) {
@@ -188,7 +189,7 @@ impl DMGCPU {
 
     #[cfg(feature = "debug")]
     fn cycle_debug(&mut self) {
-        let stdout = io::stdout();
+        let stdout = std::io::stdout();
         let mut handle = stdout.lock();
     
         writeln!(handle, "------ CYCLE {} ------", self.cycle_count).expect("Failed to write to stdout");
