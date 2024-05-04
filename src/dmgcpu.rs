@@ -174,19 +174,19 @@ impl DMGCPU {
 
     fn execute(&mut self, instr: u8) -> Option<u16> {
         match instr {
-            0x00 => {   // NOP
+            0x00 => {   //  NOP
                 Some(self.pc + 1)
             },    
-            0x01 => {   // LD, BC, n16
+            0x01 => {   //  LD, BC, n16
                 let v = self.memory.read_word(self.pc + 1);
                 self.registers.write_bc(v);
                 Some(self.pc + 3)
             },
-            0x02 => {   // LD, [BC], A
+            0x02 => {   //  LD, [BC], A
                 self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
                 Some(self.pc + 2)
             },
-            0x03 => {   // INC BC
+            0x03 => {   //  INC BC
                 self.registers.write_bc(self.registers.bc().wrapping_add(1));
                 Some(self.pc + 2)
             },
@@ -198,7 +198,7 @@ impl DMGCPU {
                 self.registers.f.subtract = false;
                 Some(self.pc + 2)
             },
-            0x05 => {   // DEC B
+            0x05 => {   //  DEC B
                 let r = self.registers.b.wrapping_sub(1);
                 self.registers.b = r;
                 self.registers.f.zero = r == 0;
@@ -219,6 +219,10 @@ impl DMGCPU {
                 self.registers.f.zero = r == 0;
                 self.registers.f.carry = c;
                 Some(self.pc + 2)
+            },
+            0x08 => {   //  LD (a16), SP
+                self.memory.write(self.memory.read_word(self.pc + 1) as usize, &self.sp.to_le_bytes());
+                Some(self.pc + 3)
             },
             0x76 => {   // HALT
                 self.halt = true;
@@ -363,5 +367,16 @@ mod tests {
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.registers.a, 0b01010100);
         assert_eq!(test_cpu.cpu.registers.f.carry, true);
+    }
+
+    #[test]
+    fn test_0x08() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.sp = 0xFFFF;
+        test_cpu.cpu.memory.write(0x0100, &[0x08]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 3);
+        assert_eq!(test_cpu.cpu.memory.read_word(test_cpu.cpu.memory.read_word(test_cpu.initial_pc + 1)), 0xFFFF);
     }
 }
