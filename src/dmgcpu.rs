@@ -222,10 +222,10 @@ impl DMGCPU {
             },
             0x05 => {   //  DEC B : 4 clock cycles
                 let r = self.registers.b.wrapping_sub(1);
-                self.registers.b = r;
                 self.registers.f.zero = r == 0;
-                self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
+                self.registers.f.half_carry = ((self.registers.b & 0x0F) as i8)- 1 < 0;
                 self.registers.f.subtract = true;
+                self.registers.b = r;
                 self.pc += 1;
                 4
             },
@@ -277,6 +277,15 @@ impl DMGCPU {
                 self.pc += 1;
                 4
             },
+            0x0D => {
+                let r = self.registers.c.wrapping_sub(1);
+                self.registers.f.zero = r == 0;
+                self.registers.f.half_carry = ((self.registers.c & 0x0F) as i8) - 1 < 0;
+                self.registers.f.subtract = true;
+                self.registers.c = r;
+                self.pc += 1;
+                4
+            }
             0x76 => {   // HALT : 4 clock cycles
                 self.halt = true;
                 self.pc += 1;
@@ -527,6 +536,32 @@ mod tests {
         assert_eq!(test_cpu.cpu.registers.c, (0x0F_u8).wrapping_add(1));
         assert_eq!(test_cpu.cpu.registers.f.zero, false);
         assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, true);
+    }
+
+    #[test]
+    fn test_0x0D() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x0D, 0x0D, 0x0D]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.c, test_cpu.initial_registers.c.wrapping_sub(1));
+
+        // test zero flag
+        test_cpu.cpu.registers.c = 0x01;
+        test_cpu.cycle();
+        assert_eq!(test_cpu.cpu.registers.c, (0x01_u8).wrapping_sub(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, true);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, true);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
+
+        // test half carry flag
+        test_cpu.cpu.registers.c = 0x00;
+        test_cpu.cycle();
+        assert_eq!(test_cpu.cpu.registers.c, (0x00_u8).wrapping_sub(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, true);
         assert_eq!(test_cpu.cpu.registers.f.half_carry, true);
     }
 }
