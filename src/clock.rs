@@ -2,6 +2,7 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+#[derive(Clone)]
 pub struct Clock {
     total_cycles: Arc<Mutex<u64>>,
     clock_speed: Arc<u32>,

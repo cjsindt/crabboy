@@ -3,3 +3,4 @@
 
 pub mod memory;
 pub mod dmgcpu;
+pub mod clock;

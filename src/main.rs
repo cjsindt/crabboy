@@ -1,17 +1,14 @@
-mod clock;
-
-use clock::Clock;
+use crabboy::dmgcpu::DMGCPU;
 use std::time::Duration;
 use std::thread;
 
 const CPU_SPEED: u32 = 4_190_000;   // cpu clock speed in Hz
 
 fn main() {
-    // setup clock
-    let cpu_clock = Clock::new(CPU_SPEED);
-    cpu_clock.start();
 
-    thread::sleep(Duration::from_secs(2));
+    let mut gbc = DMGCPU::new(CPU_SPEED);
+    gbc.run();
 
-    println!("Total cycles: {}", cpu_clock.get_total_cycles());
+    println!("Total clock cycles: {}", gbc.get_cpu_clock().get_total_cycles());
+    println!("Total cpu cycles: {}", gbc.get_cycle_count());
 }

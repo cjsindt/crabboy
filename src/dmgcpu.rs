@@ -2,6 +2,7 @@ use std::fmt;
 #[cfg(feature = "debug")]
 use std::io::{Write};
 use crate::memory::Memory;
+use crate::clock::Clock;
 
 /* ----- CONSTANT DECLARATIONS ----- */
 const ZERO_FLAG_BYTE_POSITION: u8 = 7;
@@ -16,8 +17,8 @@ pub struct DMGCPU {
     sp: u16,
     memory: Memory,
     halt: bool,
-    #[cfg(feature = "debug")]
-    cycle_count: u16,
+    cycle_count: u64,
+    cpu_clock: Clock
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -126,11 +127,15 @@ impl fmt::Debug for FlagRegister {
 
 impl DMGCPU {
     /* ----- PUBLIC ----- */
-    pub fn new() -> DMGCPU {
+    pub fn new(speed: u32) -> DMGCPU {
         let registers = Registers::new();
-        let memory = Memory::new();
-        #[cfg(feature = "debug")]
+        let mut memory = Memory::new();
+        let cpu_clock = Clock::new(speed);
         let cycle_count = 0;
+
+        cpu_clock.start();
+
+        memory.write(0xF000, &[0x76]);
 
         DMGCPU {
             registers,
@@ -138,80 +143,100 @@ impl DMGCPU {
             sp: 0x0000,
             memory,
             halt: false,
-            #[cfg(feature = "debug")]
             cycle_count,
+            cpu_clock
         }
     }
 
+    pub fn get_cpu_clock(&mut self) -> &Clock {
+        &self.cpu_clock
+    }
+
+    pub fn get_cycle_count(&mut self) -> &u64 {
+        &self.cycle_count
+    }
     // reset cpu state
     // return true if success, false if fail
     // pub fn reset(&mut self) -> bool {
         
     // }
 
+    // run the cpu
     pub fn run(&mut self) {
         
         while !self.halt {
-            self.cycle();
+            if self.get_cpu_clock().get_total_cycles() > self.cycle_count {
+                self.cycle();
+            }
         }
         #[cfg(feature = "debug")]
         self.cycle_debug();
     }
 
     /* ----- PRIVATE ----- */
+    // run a fetch, decode, execute cycle
     fn cycle(&mut self) {
         let instr = self.memory.read_byte(self.pc);
         #[cfg(feature = "debug")]
         self.cycle_debug();
-        self.pc = match self.execute(instr) {
-            Some(value) => value,
-            None => {
-                panic!("Unknown instruction!");
-                0
-            }
-        };
+        // self.pc = match self.execute(instr) {
+        //     Some(value) => value,
+        //     None => {
+        //         panic!("Unknown instruction!");
+        //         0
+        //     }
+        // };
+        // let cycles = self.execute(instr);
+        self.cycle_count += self.execute(instr) as u64;
     }
 
-        // TODO make execute return duration instead of new pc
+    // TODO make execute return duration instead of new pc
     fn execute(&mut self, instr: u8) -> u8 {
         match instr {
-            0x00 => {   //  NOP
-                Some(self.pc + 1)
+            0x00 => {   //  NOP : 4 clock cycles
+                self.pc += 1;
+                4
             },    
-            0x01 => {   //  LD, BC, n16
+            0x01 => {   //  LD, BC, n16 : 12 clock cycles
                 let v = self.memory.read_word(self.pc + 1);
                 self.registers.write_bc(v);
-                self.pc += 3
+                self.pc += 3;
+                12
             },
-            0x02 => {   //  LD, [BC], A
+            0x02 => {   //  LD, [BC], A : 8 clock cycles
                 self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
-                Some(self.pc + 2)
+                self.pc += 2;
+                8
             },
-            0x03 => {   //  INC BC
+            0x03 => {   //  INC BC : 8 clock cycles
                 self.registers.write_bc(self.registers.bc().wrapping_add(1));
-                Some(self.pc + 2)
+                self.pc += 2;
+                8
             },
-            0x04 => {   //  INC B
+            0x04 => {   //  INC B : 4 clock cycles
                 let r = self.registers.b.wrapping_add(1);
                 self.registers.b = r;
                 self.registers.f.zero = r == 0;
                 self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
                 self.registers.f.subtract = false;
-                Some(self.pc + 2)
+                self.pc += 2;
+                4
             },
-            0x05 => {   //  DEC B
+            0x05 => {   //  DEC B : 4 clock cycles
                 let r = self.registers.b.wrapping_sub(1);
                 self.registers.b = r;
                 self.registers.f.zero = r == 0;
                 self.registers.f.half_carry = (self.registers.b & 0x0F) + 1 > 0x0F;
                 self.registers.f.subtract = true;
-                Some(self.pc + 2)
+                self.pc += 2;
+                4
             },
-            0x06 => {   //  LD, B, d8
+            0x06 => {   //  LD, B, d8 : 8 clock cycles
                 self.registers.b = self.memory.read_byte(self.pc + 1);
-                Some(self.pc + 2)
+                self.pc += 2;
+                8
             },
-            0x07 => {   //  RLCA
+            0x07 => {   //  RLCA : 4 clock cycles
                 let c = self.registers.a & 0x80 == 0x80;
                 let r = (self.registers.a << 1) | (if self.registers.f.carry {1} else {0});
                 self.registers.a = r;
@@ -219,24 +244,33 @@ impl DMGCPU {
                 self.registers.f.subtract = false;
                 self.registers.f.zero = false;
                 self.registers.f.carry = c;
-                Some(self.pc + 2)
+                self.pc += 2;
+                4
             },
-            0x08 => {   //  LD (a16), SP
+            0x08 => {   //  LD (a16), SP : 20 clock cycles
                 self.memory.write(self.memory.read_word(self.pc + 1) as usize, &self.sp.to_le_bytes());
-                Some(self.pc + 3)
+                self.pc += 3;
+                20
             },
-            0x09 => {   //  ADD HL, BC
+            0x09 => {   //  ADD HL, BC : 8 clock cycles
                 self.registers.f.subtract = false;
                 self.registers.f.half_carry = (self.registers.hl() & 0x07FF) + (self.registers.bc() & 0x07FF) > 0x07FF;
                 self.registers.f.carry = self.registers.hl() > (0xFFFF - self.registers.bc());
                 self.registers.write_hl(self.registers.hl().wrapping_add(self.registers.bc()));
-                Some(self.pc + 2)
+                self.pc += 2;
+                8
             },
-            0x76 => {   // HALT
-                self.halt = true;
-                Some(self.pc + 1)
+            0x0A => {   //  LD, A, n : 8 clock cycles
+                self.registers.a = self.memory.read_byte(self.pc + 1);
+                self.pc += 2;
+                8
             }
-            3_u8..=u8::MAX => todo!()
+            0x76 => {   // HALT : 4 clock cycles
+                self.halt = true;
+                self.pc += 1;
+                4
+            }
+            2_u8..=u8::MAX => todo!()
         }
     }
 
@@ -262,7 +296,6 @@ impl DMGCPU {
         writeln!(handle, "Next Word: {:04X}", next_word).expect("Failed to write to stdout");
     
         handle.flush().expect("Failed to flush stdout");
-        self.cycle_count += 1;
     }
     
 }
@@ -280,7 +313,7 @@ mod tests {
     
     impl TestDMGCPU {
         fn new() -> Self {
-            let mut cpu = DMGCPU::new();
+            let mut cpu = DMGCPU::new(4_190_000);
             let initial_pc = cpu.pc;
             let initial_registers = cpu.registers.clone();
             TestDMGCPU {
@@ -404,10 +437,10 @@ mod tests {
     #[test]
     fn test_0x0A() {
         let mut test_cpu = TestDMGCPU::new();
-        test_cpu.cpu.memory.write(0x0100, &[0x0A]);
+        test_cpu.cpu.memory.write(0x0100, &[0x0A, 0x77]);
         test_cpu.cycle();
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
-        
+        assert_eq!(test_cpu.cpu.registers.a, test_cpu.cpu.memory.read_byte(test_cpu.initial_pc + 1));
     }
 }
