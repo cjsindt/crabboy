@@ -277,7 +277,7 @@ impl DMGCPU {
                 self.pc += 1;
                 4
             },
-            0x0D => {
+            0x0D => {   // DEC C : 4 clock cycles
                 let r = self.registers.c.wrapping_sub(1);
                 self.registers.f.zero = r == 0;
                 self.registers.f.half_carry = ((self.registers.c & 0x0F) as i8) - 1 < 0;
@@ -286,7 +286,7 @@ impl DMGCPU {
                 self.pc += 1;
                 4
             },
-            0x0E => {
+            0x0E => {   //  LC, D, d8 : 8 clock cycles
                 self.registers.c = self.memory.read_byte(self.pc + 1);
                 self.pc += 2;
                 8
