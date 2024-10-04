@@ -17,6 +17,7 @@ pub struct DMGCPU {
     sp: u16,
     memory: Memory,
     halt: bool,
+    stop: bool,
     cycle_count: u64,
     cpu_clock: Clock
 }
@@ -143,6 +144,7 @@ impl DMGCPU {
             sp: 0x0000,
             memory,
             halt: false,
+            stop: true,
             cycle_count,
             cpu_clock
         }
@@ -302,6 +304,11 @@ impl DMGCPU {
                 self.pc += 1;
                 4
             },
+            0x10 => {   //  STOP : 4 clock cycles
+                self.stop = true;
+                self.pc += 2;
+                4
+            }
             0x17 => {   //  RLA : 4 clock cycles
                 let c = self.registers.a & 0x80 == 0x80;
                 let r = (self.registers.a << 1) | (if c {1} else {0});
@@ -629,6 +636,16 @@ mod tests {
     }
 
     #[test]
+    fn test_0x10() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x10]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.stop, true);
+    }
+
+    #[test]
     fn test_0x17() {
         let mut test_cpu = TestDMGCPU::new();
         test_cpu.cpu.registers.a = 0b11001101;
@@ -656,5 +673,15 @@ mod tests {
         assert_eq!(test_cpu.cpu.registers.f.zero, false);
         assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
         assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+    }
+
+    #[test]
+    fn test_0x76() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x76]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.halt, true);
     }
 }
