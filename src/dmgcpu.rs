@@ -291,6 +291,39 @@ impl DMGCPU {
                 self.pc += 2;
                 8
             },
+            0x0F => {   //  RRCA : 4 clock cycles
+                let c = self.registers.a & 0x01 == 0x01;
+                let r = (self.registers.a >> 1) | (if self.registers.f.carry {0x80} else {0});
+                self.registers.a = r;
+                self.registers.f.half_carry = false;
+                self.registers.f.subtract = false;
+                self.registers.f.zero = false;
+                self.registers.f.carry = c;
+                self.pc += 1;
+                4
+            },
+            0x17 => {   //  RLA : 4 clock cycles
+                let c = self.registers.a & 0x80 == 0x80;
+                let r = (self.registers.a << 1) | (if c {1} else {0});
+                self.registers.a = r;
+                self.registers.f.half_carry = false;
+                self.registers.f.subtract = false;
+                self.registers.f.zero = false;
+                self.registers.f.carry = c;
+                self.pc += 1;
+                4
+            },
+            0x1F => {
+                let c = self.registers.a & 0x01 == 0x01;
+                let r = (self.registers.a >> 1) | (if c {0x80} else {0});
+                self.registers.a = r;
+                self.registers.f.half_carry = false;
+                self.registers.f.subtract = false;
+                self.registers.f.zero = false;
+                self.registers.f.carry = c;
+                self.pc += 1;
+                4
+            },
             0x76 => {   // HALT : 4 clock cycles
                 self.halt = true;
                 self.pc += 1;
@@ -578,5 +611,50 @@ mod tests {
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.registers.c, test_cpu.cpu.memory.read_byte(test_cpu.initial_pc + 1));
+    }
+
+    #[test]
+    fn test_0x0F() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.registers.a = 0b11001101;
+        test_cpu.cpu.memory.write(0x0100, &[0x0F]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.a, 0b01100110);
+        assert_eq!(test_cpu.cpu.registers.f.carry, true);
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+    }
+
+    #[test]
+    fn test_0x17() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.registers.a = 0b11001101;
+        test_cpu.cpu.memory.write(0x0100, &[0x17]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.a, 0b10011011);
+        assert_eq!(test_cpu.cpu.registers.f.carry, true);
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+    }
+
+    #[test]
+    fn test_0x1F() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.registers.a = 0b11001101;
+        test_cpu.cpu.memory.write(0x0100, &[0x1F]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.a, 0b11100110);
+        assert_eq!(test_cpu.cpu.registers.f.carry, true);
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, false);
     }
 }
