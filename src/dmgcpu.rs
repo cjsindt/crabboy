@@ -285,7 +285,12 @@ impl DMGCPU {
                 self.registers.c = r;
                 self.pc += 1;
                 4
-            }
+            },
+            0x0E => {
+                self.registers.c = self.memory.read_byte(self.pc + 1);
+                self.pc += 2;
+                8
+            },
             0x76 => {   // HALT : 4 clock cycles
                 self.halt = true;
                 self.pc += 1;
@@ -563,5 +568,15 @@ mod tests {
         assert_eq!(test_cpu.cpu.registers.f.zero, false);
         assert_eq!(test_cpu.cpu.registers.f.subtract, true);
         assert_eq!(test_cpu.cpu.registers.f.half_carry, true);
+    }
+
+    #[test]
+    fn test_0x0E() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x0E]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.c, test_cpu.cpu.memory.read_byte(test_cpu.initial_pc + 1));
     }
 }
