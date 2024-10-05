@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::{Write};
 use crate::memory::Memory;
 use crate::clock::Clock;
+use std::thread;
 
 /* ----- CONSTANT DECLARATIONS ----- */
 const ZERO_FLAG_BYTE_POSITION: u8 = 7;
@@ -136,7 +137,7 @@ impl DMGCPU {
 
         cpu_clock.start();
 
-        memory.write(0xF000, &[0x76]);
+        memory.write(0xFF00, &[0x76]);
 
         DMGCPU {
             registers,
@@ -170,6 +171,7 @@ impl DMGCPU {
             if self.get_cpu_clock().get_total_cycles() > self.cycle_count {
                 self.cycle();
             }
+            thread::yield_now();
         }
     }
 
@@ -203,7 +205,7 @@ impl DMGCPU {
                 self.pc += 3;
                 12
             },
-            0x02 => {   //  LD, [BC], A : 8 clock cycles
+            0x02 => {   //  LD, (BC), A : 8 clock cycles
                 self.memory.write(self.registers.bc() as usize, &[self.registers.a]);
                 self.pc += 1;
                 8
@@ -308,7 +310,47 @@ impl DMGCPU {
                 self.stop = true;
                 self.pc += 2;
                 4
-            }
+            },
+            0x11 => {   // LD, DE, d16 : 12 clock cycles
+                let v = self.memory.read_word(self.pc + 1);
+                self.registers.write_de(v);
+                self.pc += 3;
+                12
+
+            },
+            0x12 => {   //  LD, (DE), A : 8 clock cycles
+                self.memory.write(self.registers.de() as usize, &[self.registers.a]);
+                self.pc += 1;
+                8
+            },
+            0x13 => {   // INC DE : 8 clock cycles
+                self.registers.write_de(self.registers.de().wrapping_add(1));
+                self.pc += 1;
+                8
+            },
+            0x14 => {   // INC D : 4 clock cycles
+                let r = self.registers.d.wrapping_add(1);
+                self.registers.f.zero = r == 0;
+                self.registers.f.half_carry = (self.registers.d & 0x0F) + 1 > 0x0F;
+                self.registers.f.subtract = false;
+                self.registers.d = r;
+                self.pc += 1;
+                4
+            },
+            0x15 => {   //  DEC D : 4 clock cycles
+                let r = self.registers.d.wrapping_sub(1);
+                self.registers.f.zero = r == 0;
+                self.registers.f.half_carry = ((self.registers.d & 0x0F) as i8)- 1 < 0;
+                self.registers.f.subtract = true;
+                self.registers.d = r;
+                self.pc += 1;
+                4
+            },
+            0x16 => {   //  LD, D, d8 : 8 clock cycles
+                self.registers.d = self.memory.read_byte(self.pc + 1);
+                self.pc += 2;
+                8
+            },
             0x17 => {   //  RLA : 4 clock cycles
                 let c = self.registers.a & 0x80 == 0x80;
                 let r = (self.registers.a << 1) | (if c {1} else {0});
@@ -365,8 +407,9 @@ impl DMGCPU {
     }
     
 }
+/* end dmgcpu */
 
-/* ----- TESTS ----- */
+/* ---------------------------------- TESTS ---------------------------------- */
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +686,101 @@ mod tests {
 
         assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
         assert_eq!(test_cpu.cpu.stop, true);
+    }
+
+    #[test]
+    fn test_0x11() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x11, 0xEF, 0xBE]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 3);
+        assert_eq!(test_cpu.cpu.registers.de(), 0xBEEF);
+    }
+
+    #[test]
+    fn test_0x12() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x12]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.memory.read_byte(test_cpu.cpu.registers.de()), test_cpu.cpu.registers.a);
+    }
+
+    #[test]
+    fn test_0x13() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x13]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.de(), test_cpu.initial_registers.bc().wrapping_add(1));
+    }
+
+    #[test]
+    fn test_0x14() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x14, 0x14, 0x14]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.d, test_cpu.initial_registers.d.wrapping_add(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
+
+        // test zero flag
+        test_cpu.cpu.registers.d = 0xFF;
+        test_cpu.cycle();
+        assert_eq!(test_cpu.cpu.registers.d, (0xFF_u8).wrapping_add(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, true);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, true);
+
+        // test half carry flag
+        test_cpu.cpu.registers.d = 0x0F;
+        test_cpu.cycle();
+        assert_eq!(test_cpu.cpu.registers.d, (0x0F_u8).wrapping_add(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, false);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, true);
+    }
+
+    #[test]
+    fn test_0x15() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x15, 0x15, 0x15]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 1);
+        assert_eq!(test_cpu.cpu.registers.d, test_cpu.initial_registers.d.wrapping_sub(1));
+
+        // test zero flag
+        test_cpu.cpu.registers.d = 0x01;
+        test_cpu.cycle();
+        assert_eq!(test_cpu.cpu.registers.d, (0x01_u8).wrapping_sub(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, true);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, true);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, false);
+
+        // test half carry flag
+        test_cpu.cpu.registers.d = 0x00;
+        test_cpu.cycle();
+        assert_eq!(test_cpu.cpu.registers.d, (0x00_u8).wrapping_sub(1));
+        assert_eq!(test_cpu.cpu.registers.f.zero, false);
+        assert_eq!(test_cpu.cpu.registers.f.subtract, true);
+        assert_eq!(test_cpu.cpu.registers.f.half_carry, true);
+    }
+
+    #[test]
+    fn test_0x16() {
+        let mut test_cpu = TestDMGCPU::new();
+        test_cpu.cpu.memory.write(0x0100, &[0x16, 0x77]);
+        test_cpu.cycle();
+
+        assert_eq!(test_cpu.cpu.pc, test_cpu.initial_pc + 2);
+        assert_eq!(test_cpu.cpu.registers.d, test_cpu.cpu.memory.read_byte(test_cpu.initial_pc + 1));
     }
 
     #[test]
